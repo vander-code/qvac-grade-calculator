@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grade Calculator</title>
+<style>
+  :root { --bg: #fbfcff; --ink: #14243f; --muted: #66748f; --line: #d5deee; --orange: #f2711c; --card: #fff; --good: #1c7a4a; --bad: #c0392b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; background-color: var(--bg);
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 28px 28px; }
+  main { max-width: 640px; margin: 0 auto; padding: 26px 16px 48px; }
+  h1 { font-size: 30px; margin: 0 0 2px; } .sub { color: var(--muted); margin: 0 0 12px; }
+  #status { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  #status.ok { color: var(--good); } #status.err { color: var(--bad); }
+  .card { background: var(--card); border: 2px solid var(--ink); border-radius: 14px; padding: 16px; margin-bottom: 16px; box-shadow: 4px 4px 0 var(--ink); }
+  .cols, .rowg { display: grid; grid-template-columns: 1fr 90px 70px 34px; gap: 8px; align-items: center; }
+  .cols { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+  .rowg { margin-bottom: 8px; }
+  input { width: 100%; font: inherit; padding: 8px 10px; border: 2px solid var(--line); border-radius: 8px; color: var(--ink); background: #fff; }
+  input[type=number] { font-family: ui-monospace, Consolas, monospace; }
+  input:focus-visible, button:focus-visible, label.btn:focus-within { outline: 3px solid var(--orange); outline-offset: 2px; }
+  button, label.btn { font: inherit; font-weight: 700; padding: 9px 16px; border: 2px solid var(--ink); border-radius: 10px; background: var(--orange); color: #fff; cursor: pointer; display: inline-block; }
+  button.ghost, label.btn.ghost { background: #fff; color: var(--ink); }
+  button.x { padding: 4px 0; background: transparent; color: var(--muted); border: 0; font-size: 20px; }
+  button:disabled, label.btn.off { opacity: .45; cursor: not-allowed; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .big { text-align: center; }
+  #avg { font: 800 64px/1.1 ui-monospace, Consolas, monospace; }
+  #letter { display: inline-block; background: var(--orange); color: #fff; font-weight: 800; border-radius: 8px; padding: 0 12px; margin-left: 8px; font-size: 28px; vertical-align: middle; }
+  #detail { color: var(--muted); margin: 4px 0 0; }
+  .target { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 2px dashed var(--line); }
+  .target input { width: 80px; } #need { font-weight: 600; }
+  details { margin-top: 10px; color: var(--muted); font-size: 14px; } pre { white-space: pre-wrap; margin: 6px 0 0; }
+  #scanMsg { margin: 10px 0 0; font-size: 14px; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Grade Calculator</h1>
+  <p class="sub">Type your grades, or scan a photo of your report card.</p>
+  <p id="status">Checking the scanner...</p>
+
+  <section class="card big" aria-live="polite">
+    <div><span id="avg">--</span><span id="letter" hidden></span></div>
+    <p id="detail">Enter at least one grade</p>
+    <div class="target">
+      <label for="target">Goal average:</label><input id="target" type="number" min="0" max="100" placeholder="90">
+      <span id="need"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="cols"><span>Subject</span><span>Grade (0-100)</span><span>Weight</span><span></span></div>
+    <div id="rows"></div>
+    <div class="bar">
+      <button id="add">+ Add subject</button>
+      <label class="btn ghost off" id="scanBtn" tabindex="-1">Scan report card<input id="file" type="file" accept="image/*" disabled></label>
+      <button class="ghost" id="sample">Try sample</button>
+      <button class="ghost" id="clear">Clear</button>
+    </div>
+    <p id="scanMsg"></p>
+    <details id="raw" hidden><summary>What the scanner read</summary><pre id="rawText"></pre></details>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const LETTERS = [[90, "A"], [80, "B"], [70, "C"], [60, "D"], [0, "F"]]; // change to fit your school
+let rows = [];
+try { rows = JSON.parse(localStorage.getItem("grades") || "[]"); } catch {}
+if (!rows.length) rows = [blank(), blank(), blank()];
+let uid = 1;
+function blank(subject = "", grade = "", weight = 1) { return { id: Date.now() + Math.random(), subject, grade, weight }; }
+
+// ---------- Math (done with plain code, so it is always exact) ----------
+function calc() {
+  try { localStorage.setItem("grades", JSON.stringify(rows)); } catch {}
+  const ok = rows.filter((r) => r.grade !== "" && +r.grade >= 0 && +r.grade <= 100 && +r.weight > 0);
+  const W = ok.reduce((a, r) => a + +r.weight, 0);
+  const S = ok.reduce((a, r) => a + +r.grade * +r.weight, 0);
+  $("need").textContent = "";
+  if (!ok.length) { $("avg").textContent = "--"; $("letter").hidden = true; $("detail").textContent = "Enter at least one grade"; return; }
+
+  const avg = S / W;
+  $("avg").textContent = avg.toFixed(2);
+  $("letter").textContent = LETTERS.find(([min]) => avg >= min)[1]; $("letter").hidden = false;
+  const best = ok.reduce((a, b) => (+b.grade > +a.grade ? b : a)), worst = ok.reduce((a, b) => (+b.grade < +a.grade ? b : a));
+  const weighted = new Set(ok.map((r) => +r.weight)).size > 1;
+  $("detail").textContent = ok.length + " grade" + (ok.length > 1 ? "s" : "") + (weighted ? " (weighted)" : "") +
+    (ok.length > 1 ? ". Highest: " + (best.subject || "?") + " " + best.grade + ". Lowest: " + (worst.subject || "?") + " " + worst.grade + "." : "");
+
+  const t = parseFloat($("target").value);
+  if (!isNaN(t)) {
+    const needed = t * (W + 1) - S; // grade needed on one more subject of weight 1
+    $("need").textContent = avg >= t && needed <= 0 ? "You're already above your goal!"
+      : needed > 100 ? "One more grade can't reach " + t + ". You'd need several strong grades."
+      : "Next grade needed: " + Math.max(0, needed).toFixed(1);
+  }
+}
+
+// ---------- Table ----------
+function draw() {
+  const box = $("rows"); box.innerHTML = "";
+  rows.forEach((r) => {
+    const el = document.createElement("div"); el.className = "rowg";
+    const mk = (type, key, ph, label) => {
+      const i = document.createElement("input"); i.type = type; i.value = r[key]; i.placeholder = ph; i.setAttribute("aria-label", label);
+      if (type === "number") { i.min = 0; i.step = "any"; }
+      i.oninput = () => { r[key] = i.value; calc(); }; return i;
+    };
+    const x = document.createElement("button"); x.className = "x"; x.textContent = "×"; x.setAttribute("aria-label", "Remove row");
+    x.onclick = () => { rows = rows.filter((q) => q !== r); if (!rows.length) rows = [blank()]; draw(); calc(); };
+    el.append(mk("text", "subject", "Math", "Subject"), mk("number", "grade", "92", "Grade"), mk("number", "weight", "1", "Weight"), x);
+    box.append(el);
+  });
+}
+const isEmpty = (r) => !r.subject && r.grade === "";
+$("add").onclick = () => { rows.push(blank()); draw(); box_focus(); };
+function box_focus() { const l = $("rows").lastChild; l && l.querySelector("input").focus(); }
+$("clear").onclick = () => { if (confirm("Clear all grades?")) { rows = [blank(), blank(), blank()]; draw(); calc(); $("scanMsg").textContent = ""; $("raw").hidden = true; } };
+$("sample").onclick = () => {
+  rows = rows.filter((r) => !isEmpty(r));
+  [["Math", 92], ["English", 88], ["Science", 95], ["History", 79], ["Filipino", 90]].forEach(([s, g]) => rows.push(blank(s, g)));
+  draw(); calc();
+};
+$("target").oninput = calc;
+
+// ---------- Scan a photo: browser -> PNG -> QVAC OCR on your machine ----------
+async function toPng(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res) => c.toBlob(res, "image/png"));
+}
+
+// Turn a line like "Mathematics  92" into a subject and a grade
+function parseLine(line) {
+  const nums = [...line.matchAll(/\d{1,3}(?:[.,]\d{1,2})?/g)].filter((m) => { const v = parseFloat(m[0].replace(",", ".")); return v >= 0 && v <= 100; });
+  if (!nums.length) return null;
+  const m = nums[nums.length - 1];
+  const subject = line.replace(m[0], " ").replace(/[|:_\-.,]+/g, " ").replace(/\s+/g, " ").trim();
+  if (/^(total|average|gpa|general|remarks?|days?|page)/i.test(subject)) return null;
+  return { subject, grade: parseFloat(m[0].replace(",", ".")) };
+}
+
+$("file").onchange = async (e) => {
+  const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+  $("scanMsg").textContent = "Scanning on your device..."; $("scanBtn").classList.add("off");
+  try {
+    const res = await fetch("/api/scan", { method: "POST", headers: { "Content-Type": "image/png" }, body: await toPng(file) });
+    const data = await res.json(); if (!res.ok) throw new Error(data.error);
+    const found = data.lines.map(parseLine).filter(Boolean);
+    $("rawText").textContent = data.lines.join("\n") || "(nothing read)"; $("raw").hidden = false;
+    if (!found.length) $("scanMsg").textContent = "I couldn't find any grades. Try a clearer, well-lit, straight-on photo.";
+    else {
+      rows = rows.filter((r) => !isEmpty(r));
+      found.forEach((f) => rows.push(blank(f.subject || "Subject " + (rows.length + 1), f.grade)));
+      draw(); calc();
+      $("scanMsg").textContent = "Found " + found.length + " grade" + (found.length > 1 ? "s" : "") + ". Please check them, since scanning can misread numbers.";
+    }
+  } catch (err) { $("scanMsg").textContent = "Scan failed: " + err.message; }
+  $("scanBtn").classList.remove("off");
+};
+
+// ---------- Scanner status ----------
+async function checkStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    if (s.error) return setStatus("Scanner error: " + s.error + ". The calculator still works.", "err");
+    if (s.ready) { $("file").disabled = false; $("scanBtn").classList.remove("off"); return setStatus("Scanner ready. Photos are read on your device.", "ok"); }
+    setStatus(s.message + (s.percent != null ? " " + s.percent + "%" : "") + " The calculator works meanwhile.");
+  } catch { setStatus("Can't reach the server. Is it running?", "err"); }
+  setTimeout(checkStatus, 1500);
+}
+function setStatus(t, c = "") { $("status").textContent = t; $("status").className = c; }
+
+draw(); calc(); checkStatus();
+</script>
+</body>
+</html>
