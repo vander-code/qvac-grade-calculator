@@ -1,0 +1,14 @@
+{
+  "name": "qvac-grade-calculator",
+  "version": "1.0.0",
+  "description": "Grade Calculator: enter grades or scan a report card photo. Text recognition (OCR) runs on-device with the QVAC SDK.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@qvac/sdk": "^0.19.0"
+  },
+  "license": "MIT"
+}
